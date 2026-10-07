@@ -18,16 +18,14 @@ func main() {
 
 	scanOnly := flag.Bool("scan-only", false, "list valid tokens without logging out")
 	allSessions := flag.Bool("all-sessions", false, "log out all sessions per account (MFA may be required)")
-	yes := flag.Bool("y", false, "skip confirmation before logout")
-	flag.BoolVar(yes, "yes", false, "skip confirmation before logout")
 	flag.Parse()
 
-	exitCode := run(*scanOnly, *allSessions, *yes)
+	exitCode := run(*scanOnly, *allSessions)
 	waitBeforeExit()
 	os.Exit(exitCode)
 }
 
-func run(scanOnly, allSessions, yes bool) int {
+func run(scanOnly, allSessions bool) int {
 	targets := paths.AllScanTargets()
 	if len(targets) == 0 {
 		fmt.Println("No Discord Desktop or browser storage folders found to scan.")
@@ -49,70 +47,52 @@ func run(scanOnly, allSessions, yes bool) int {
 		return 0
 	}
 
-	valid := make(map[string][]string)
 	stale := 0
+	okCount := 0
+	validCount := 0
+
+	fmt.Printf("\nToken-like strings: %d\n\n", len(tokenMap))
+
 	for token, sources := range tokenMap {
 		user, _ := discord.GetCurrentUser(token)
-		if user != nil {
-			valid[token] = sources
-		} else {
+		if user == nil {
 			stale++
+			continue
 		}
-	}
-
-	fmt.Printf("\nToken-like strings: %d | Valid (active): %d | Expired or invalid: %d\n\n", len(tokenMap), len(valid), stale)
-
-	for token, sources := range valid {
-		user, _ := discord.GetCurrentUser(token)
-		who := "?"
-		if user != nil {
-			who = fmt.Sprintf("%s (%s)", user.Username, user.ID)
-		}
+		validCount++
 		masked := maskToken(token)
-		fmt.Printf("  • %s\n", who)
+		fmt.Printf("  • %s (%s)\n", user.Username, user.ID)
 		fmt.Printf("    Source: %s\n", strings.Join(sources, ", "))
 		fmt.Printf("    Token: %s\n", masked)
-	}
 
-	if scanOnly {
-		return 0
-	}
-
-	if len(valid) == 0 {
-		fmt.Println("\nNo active tokens to log out.")
-		return 0
-	}
-
-	if !yes {
-		fmt.Print("\nThis will log out every token listed above (signed-in apps/browsers will be disconnected).\nType yes and press Enter to continue: ")
-		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-		line = strings.TrimSpace(strings.ToLower(line))
-		if line != "yes" && line != "y" {
-			fmt.Println("Cancelled.")
-			return 0
+		if scanOnly {
+			continue
 		}
-	}
 
-	fmt.Println()
-	okCount := 0
-	for token := range valid {
 		result := discord.RevokeToken(token, allSessions)
-		name := "?"
-		if result.User != nil {
-			name = result.User.Username
-		}
 		status := "FAIL"
 		if result.OK {
 			status = "OK"
 			okCount++
 		}
-		fmt.Printf("[%s] %s - %s\n", status, name, result.Message)
+		fmt.Printf("    [%s] %s\n", status, result.Message)
 	}
 
-	fmt.Printf("\nDone: %d/%d succeeded.\n", okCount, len(valid))
+	fmt.Printf("\nValid (active): %d | Expired or invalid: %d\n", validCount, stale)
+
+	if scanOnly {
+		return 0
+	}
+
+	if validCount == 0 {
+		fmt.Println("No active tokens to log out.")
+		return 0
+	}
+
+	fmt.Printf("\nDone: %d/%d logged out.\n", okCount, validCount)
 	fmt.Println("To revoke every session on every device: Discord → Settings → Change Password.")
 
-	if okCount == len(valid) {
+	if okCount == validCount {
 		return 0
 	}
 	return 2

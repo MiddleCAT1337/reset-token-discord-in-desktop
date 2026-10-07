@@ -6,11 +6,11 @@
 
 ## การทำงานของโปรแกรม
 
-1. โปรแกรมอ่านตัวเลือกจาก command line เช่น scan-only, all-sessions, yes
+1. โปรแกรมอ่านตัวเลือกจาก command line เช่น scan-only, all-sessions
 2. โมดูล paths รวบรวม path ที่จะสแกน ได้แก่โฟลเดอร์ Discord Desktop (Stable, Canary, PTB) และ Local Storage / Session Storage ของแต่ละโปรไฟล์เบราว์เซอร์
 3. โมดูล scanner เปิดไฟล์ LevelDB ใน path เหล่านั้น แล้วใช้รูปแบบข้อความ (regex) หา string ที่น่าจะเป็น Discord user token จากนั้นกรองอีกครั้งด้วยการถอด base64 ส่วนแรกของ token ว่าเป็นเลข user id จริงหรือไม่
 4. แต่ละ token ที่เจอ โมดูล discord เรียก GET /users/@me ของ Discord เพื่อดูว่ายังใช้ได้ไหม และดึงชื่อบัญชีมาแสดง
-5. ถ้าไม่ใช่โหมด scan-only และผู้ใช้ยืนยัน (หรือใช้ -y) โปรแกรมจะเรียก POST /auth/logout เพื่อยกเลิก session ของ token นั้น หรือถ้าใช้ --all-sessions จะดึงรายการ session แล้วส่ง logout เป็นชุด
+5. ถ้าไม่ใช่โหมด scan-only ทันทีที่ยืนยันว่า token ใช้ได้ โปรแกรมจะเรียก POST /auth/logout ของ token นั้นทันที ไม่ถามยืนยัน หรือถ้าใช้ --all-sessions จะดึงรายการ session แล้วส่ง logout เป็นชุด
 6. คำขอ HTTP ส่งจากเครื่องผู้ใช้ไปที่ discord.com โดยตรง ไม่มีการส่ง token ไปเซิร์ฟเวอร์อื่น
 7. เมื่อจบงาน โปรแกรมรอให้กด Enter แล้วค่อยปิด
 
@@ -69,51 +69,28 @@ go build -o resettoken.exe .
 
 ## วิธีใช้งาน
 
-### ขั้นที่ 1 เปิดโปรแกรมแบบดูอย่างเดียว (แนะนำครั้งแรก)
+### รันปกติ (สแกนแล้ว logout ทันที)
 
-ยังไม่ logout ใช้แค่ดูว่าในเครื่องมี token อะไรที่ยังใช้ได้บ้าง
-
-```
-.\resettoken.exe --scan-only
-```
-
-สิ่งที่ควรเห็นบนหน้าจอ (ตัวอย่าง ตัวเลขอาจไม่ตรงกับเครื่องคุณ)
-
-- บรรทัด Scanning ... locations บอกว่าสแกนกี่ตำแหน่ง
-- บรรทัด Token-like strings ... Valid ... Expired ... สรุปจำนวน
-- รายการบัญชี แหล่ง (Source) เช่น Chrome (Default) หรือ Discord Desktop
-- Token แบบย่อ เช่น MTQ1OTk5...eV3E
-
-ตอนจบจะขึ้น Press Enter to exit... กด Enter หนึ่งครั้งเพื่อปิด
-
-### ขั้นที่ 2 logout token ทุกตัวที่ยังใช้ได้บนเครื่อง
-
-แอป Discord และเบราว์เซอร์ที่ login อยู่จะหลุดออกหลัง logout สำเร็จ
+เปิด exe แล้วโปรแกรมจะสแกน แสดง token ที่ยังใช้ได้ แล้ว logout ทีละตัวทันทีโดยไม่ถาม yes
 
 ```
 .\resettoken.exe
 ```
 
-โปรแกรมจะถามให้พิมพ์ yes แล้วกด Enter ถ้าไม่ต้องการให้ถาม ใช้
+แอป Discord และเบราว์เซอร์ที่ login อยู่จะหลุดออกหลัง logout สำเร็จ ใต้แต่ละรายการจะมี [OK] หรือ [FAIL]
+
+### ดูอย่างเดียว ไม่ logout
 
 ```
-.\resettoken.exe -y
+.\resettoken.exe --scan-only
 ```
 
-หรือ
-
-```
-.\resettoken.exe --yes
-```
-
-หลัง logout แต่ละบัญชีจะมีบรรทัด [OK] หรือ [FAIL] ตามด้วยชื่อผู้ใช้และข้อความสถานะ
-
-### ขั้นที่ 3 โหมด logout session ทั้งหมดของแต่ละบัญชี (ตัวเลือก)
+### โหมด logout session ทั้งหมดของแต่ละบัญชี (ตัวเลือก)
 
 ใช้เมื่ออยากพยายามยกเลิก session หลายตัวของบัญชีเดียวกันผ่าน API มากกว่า logout แค่ token ที่เจอในไฟล์
 
 ```
-.\resettoken.exe --all-sessions -y
+.\resettoken.exe --all-sessions
 ```
 
 ถ้าบัญชีเปิด MFA ไว้ อาจได้ข้อความว่าต้องยืนยัน MFA ในกรณีนั้นให้ logout ทีละ token แบบปกติ หรือเปลี่ยนรหัสผ่านใน Discord เพื่อยกเลิกทุกที่
@@ -121,7 +98,6 @@ go build -o resettoken.exe .
 ### สรุปตัวเลือกคำสั่ง (flags)
 
 - --scan-only ดูรายการ token ที่ใช้ได้ ไม่ logout
-- -y หรือ --yes ข้ามคำถามยืนยันก่อน logout
 - --all-sessions พยายาม logout session ทั้งหมดต่อบัญชี (อาจต้อง MFA)
 
 ### ถ้าสแกนแล้วไม่เจอ token
